@@ -1,0 +1,642 @@
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merry Christmas 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1600px;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: #000;
+        }
+        
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 40px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .title {
+            font-size: 3.5rem;
+            font-style: italic;
+            margin-bottom: 10px;
+            color: #ffffff;
+            font-family: 'Monotype Corsiva', cursive;
+        }
+        
+        .subtitle {
+            font-size: 2.8rem;
+            color: #ffffff;
+            font-family: 'Monotype Corsiva', cursive;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+        }
+        
+        button {
+            background-color: #1a5a1a;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background-color: #2a8a2a;
+            transform: scale(1.05);
+        }
+        
+        .info {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            z-index: 10;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 1rem;
+            max-width: 300px;
+        }
+        
+        .info h3 {
+            color: #ffcc00;
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+        
+        .info p {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        
+        .fps {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ccff;
+            font-size: 1.2rem;
+            z-index: 10;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        
+        .footer {
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+            color: #888;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+        
+        @media (max-width: 1200px) {
+            canvas {
+                width: 100%;
+                height: auto;
+            }
+            
+            .title {
+                font-size: 2.5rem;
+            }
+            
+            .subtitle {
+                font-size: 2rem;
+            }
+            
+            .info {
+                font-size: 0.9rem;
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">Merry Christmas</div>
+            <div class="subtitle">647</div>
+        </div>
+        
+        <div class="info">
+            <h3>3D圣诞场景</h3>
+            <p>• 绿色粒子组成3D圣诞树</p>
+            <p>• 地面蓝色光环旋转</p>
+            <p>• 树顶有粉红色爱心</p>
+            <p>• 空中飘散着雪花和星星</p>
+            <p>• 使用鼠标滚轮可以缩放视角</p>
+        </div>
+        
+        <div class="fps">FPS: <span id="fpsCounter">60</span></div>
+        
+        <canvas id="sceneCanvas"></canvas>
+        
+        <div class="controls">
+            <button id="toggleRotation">暂停旋转</button>
+            <button id="toggleSnow">暂停雪花</button>
+            <button id="resetView">重置视角</button>
+            <button id="toggleFullscreen">全屏</button>
+        </div>
+        
+        <div class="footer">基于Canvas的3D粒子系统 | 圣诞快乐</div>
+    </div>
+
+    <script>
+        // ================== 全局参数 ==================
+        const WIDTH = 1600;
+        const HEIGHT = 900;
+        const BLACK = [0, 0, 0];
+
+        // 粒子数量
+        const TREE_POINTS   = 25000;      // 树更"毛茸茸"
+        const GROUND_POINTS = 4000;
+        const STAR_POINTS   = 1200;       // 空中小亮点，跟树/地面一起转
+        const HEART_POINTS  = 1000;       // 树顶 3D 爱心的小光点
+        const SNOW2D_POINTS = 10;         // 前景大雪花
+
+        // 相机参数 —— 俯视视角
+        let camDist = 13;          // 相机离原点的"前后"距离（拉远一点，树不被裁）
+        let camHeight = 6.0;       // 相机高度
+        const PITCH = -0.25;       // 负角度 = 俯视
+
+        const TREE_HEIGHT = 12.0;  // 树高度
+
+        // 交互状态
+        let isRotating = true;
+        let isSnowFalling = true;
+        let rotationAngle = 0.0;
+
+        // ================== 生成圣诞树 ==================
+        function genTreePoints() {
+            const pts = [];
+            const loops = 9;
+            const spiralN = Math.floor(TREE_POINTS * 0.7);   // 70% 螺旋灯带，其余填充
+
+            // 70% 螺旋灯带 —— 高度分布偏向下半部分
+            for (let i = 0; i < spiralN; i++) {
+                const u = Math.random();          // [0,1] 螺旋参数
+                const h = Math.pow(u, 1.6);       // 底部密一点，顶部稀一点
+                const y = TREE_HEIGHT * h + 0.2;
+
+                // 基础半径：整体较宽
+                let baseR = Math.pow((1 - h), 1.1) * 3.2;
+                // 用正弦做"树枝层次"
+                const branchWave = Math.max(0.0, Math.sin((h * 5.8 + 0.15) * Math.PI * 2));
+                const branchFactor = 1.0 + 0.65 * branchWave;
+                baseR *= branchFactor;
+
+                const t = u * loops * Math.PI * 2;
+                const angle = t + Math.random() * 0.44 - 0.22;
+                const r = baseR * (Math.random() * 0.23 + 0.85);
+
+                const x = Math.cos(angle) * r;
+                const z = Math.sin(angle) * r;
+
+                // 中段更亮
+                let midBoost = 1.0 - Math.abs(h - 0.55) * 1.5;
+                midBoost = Math.max(0.15, midBoost);
+                let baseG = 155 + Math.floor(90 * midBoost);
+                let baseB = 185 + Math.floor(70 * midBoost);
+
+                const color = [
+                    255,
+                    Math.min(255, baseG + Math.floor(Math.random() * 35 - 15)),
+                    Math.min(255, baseB + Math.floor(Math.random() * 50 - 15)),
+                ];
+                
+                // 点缀更亮的小灯
+                if (Math.random() < 0.08) {
+                    color[1] = 255 - Math.floor(Math.random() * 35);
+                    color[2] = 230 + Math.floor(Math.random() * 25);
+                }
+
+                pts.push({x, y, z, color});
+            }
+
+            // 30% 随机填充，让轮廓更"毛茸茸"
+            const fillN = TREE_POINTS - spiralN;
+            for (let i = 0; i < fillN; i++) {
+                // 填充部分再偏向底部一点（指数更大）
+                const h = Math.pow(Math.random(), 1.9);
+                // 在树身上下稍微抖一点，填补空隙
+                const y = TREE_HEIGHT * h + 0.2 + (Math.random() * 0.16 - 0.08);
+
+                let baseR = Math.pow((1 - h), 1.1) * 4.3;
+                const branchWave = Math.max(0.0, Math.sin((h * 5.8 + 0.15) * Math.PI * 2));
+                const branchFactor = 1.0 + 0.65 * branchWave;
+                baseR *= branchFactor;
+
+                // 半径仍然偏外圈，营造蓬松边缘
+                const r = baseR * Math.sqrt(Math.random());
+                const angle = Math.random() * Math.PI * 2;
+
+                const x = Math.cos(angle) * r + (Math.random() * 0.16 - 0.08);
+                const z = Math.sin(angle) * r + (Math.random() * 0.16 - 0.08);
+
+                const g = Math.floor(Math.random() * 60 + 165);
+                const b = Math.floor(Math.random() * 60 + 190);
+                const color = [255, g, b];
+                pts.push({x, y, z, color});
+            }
+
+            return pts;
+        }
+
+        // ================== 地面光环（法阵盘子） ==================
+        function genGroundPoints() {
+            const pts = [];
+            const rings = [4.6, 6.0, 7.4, 8.8, 10.2, 11.4];
+            for (let i = 0; i < GROUND_POINTS; i++) {
+                const ring = rings[Math.floor(Math.random() * rings.length)];
+                const r = gaussianRandom(ring, 0.3);
+                const theta = Math.random() * Math.PI * 2;
+                const x = Math.cos(theta) * r;
+                const z = Math.sin(theta) * r;
+                const y = -0.25;
+
+                let c;
+                if (Math.random() < 0.15) {
+                    c = Math.floor(Math.random() * 20 + 235);
+                } else {
+                    c = Math.floor(Math.random() * 45 + 190);
+                }
+                const color = [c, c, 255];
+                pts.push({x, y, z, color});
+            }
+            return pts;
+        }
+
+        // 高斯随机函数
+        function gaussianRandom(mean, std) {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random();
+            while(v === 0) v = Math.random();
+            let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            return num * std + mean;
+        }
+
+        // ================== 空中 3D 小亮点（随场景旋转） ==================
+        function genStarPoints() {
+            const pts = [];
+            for (let i = 0; i < STAR_POINTS; i++) {
+                const x = Math.random() * 36 - 18;
+                const z = Math.random() * 36 - 18;
+                const y = Math.random() * 15 + 3;
+                const base = Math.floor(Math.random() * 40 + 215);
+                const color = [base, base, 255];
+                pts.push({x, y, z, color});
+            }
+            return pts;
+        }
+
+        // ================== 树顶 3D 爱心（2D 心形 + 小厚度） ==================
+        function genHeartPoints() {
+            const pts = [];
+            const scale = 0.9;
+            const topY = TREE_HEIGHT + 0.05;   // 心尖大致在 TREE_HEIGHT 附近
+
+            while (pts.length < HEART_POINTS) {
+                const x = Math.random() * 2.6 - 1.3;
+                const y = Math.random() * 2.8 - 1.4;
+
+                const f = Math.pow(x * x + y * y - 1.0, 3) - x * x * Math.pow(y, 3);
+
+                if (f <= 0.0) {
+                    const wx = x * scale * 0.8;
+                    const wy = topY + (y + 1.0) * scale * 0.5;
+                    const wz = Math.random() * 0.36 - 0.18;
+
+                    const dist = Math.hypot(x, y);
+                    let factor = Math.max(0.35, 1.15 - 0.5 * dist);
+                    const r = 255;
+                    let g = Math.floor(130 * factor + 80);
+                    let b = Math.floor(190 * factor + 70);
+                    g = Math.max(120, Math.min(255, g));
+                    b = Math.max(120, Math.min(255, b));
+
+                    pts.push({x: wx, y: wy, z: wz, color: [r, g, b]});
+                }
+            }
+
+            return pts;
+        }
+
+        // ================== 前景 2D 大雪花（亮、贴屏、数量≤8） ==================
+        function initSnow2D() {
+            const flakes = [];
+            for (let i = 0; i < SNOW2D_POINTS; i++) {
+                const x = Math.random() * WIDTH;
+                const y = Math.random() * 70 - 80;
+                const radius = Math.random() * 6 + 10;
+                const speed = Math.random() * 15 + 30;
+                const travel = HEIGHT + 80 - y;
+                const life = travel / speed;
+                const maxLife = life;
+                flakes.push({x, y, radius, speed, life, maxLife});
+            }
+            return flakes;
+        }
+
+        function respawnFlake(f) {
+            f.x = Math.random() * WIDTH;
+            f.y = Math.random() * 70 - 80;
+            f.radius = Math.random() * 6 + 10;
+            f.speed = Math.random() * 15 + 30;
+            const travel = HEIGHT + 80 - f.y;
+            f.life = travel / f.speed;
+            f.maxLife = f.life;
+        }
+
+        function updateSnow2D(flakes, dt) {
+            for (const flake of flakes) {
+                flake.y += flake.speed * dt;
+                flake.life -= dt;
+                if (flake.life <= 0 || flake.y > HEIGHT + 50) {
+                    respawnFlake(flake);
+                }
+            }
+        }
+
+        function drawSnow2D(ctx, flakes) {
+            for (const flake of flakes) {
+                if (flake.maxLife <= 0) continue;
+
+                let phase = flake.life / flake.maxLife;
+                let alpha;
+                if (phase > 0.3) {
+                    alpha = 255;
+                } else {
+                    alpha = Math.floor(255 * (phase / 0.3));
+                }
+                alpha = Math.max(0, Math.min(255, alpha));
+
+                const cx = Math.floor(flake.x);
+                const cy = Math.floor(flake.y);
+
+                const r1 = Math.max(1, flake.radius * 1.3);
+                const r2 = Math.max(1, flake.radius * 1.0);
+                const r3 = Math.max(1, flake.radius * 0.75);
+                const r4 = Math.max(1, flake.radius * 0.55);
+                const r5 = Math.max(1, flake.radius * 0.45);
+
+                const a1 = Math.floor(alpha / 20);
+                const a2 = Math.floor(alpha / 12);
+                const a3 = Math.floor(alpha / 6);
+                const a4 = Math.floor(alpha / 3);
+                const a5 = alpha;
+
+                // 绘制多层圆形模拟发光效果
+                if (a1 > 0) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${a1/255})`;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                if (a2 > 0) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${a2/255})`;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                if (a3 > 0) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${a3/255})`;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                if (a4 > 0) {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${a4/255})`;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = `rgba(255, 255, 255, ${a5/255})`;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ================== 3D -> 2D 投影（俯视） ==================
+        function projectPoint(x, y, z, angle) {
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            const xz = x * cosA - z * sinA;
+            const zz = x * sinA + z * cosA;
+
+            const cosP = Math.cos(PITCH);
+            const sinP = Math.sin(PITCH);
+            const yp = y * cosP - zz * sinP;
+            const zp = y * sinP + zz * cosP;
+
+            const finalZp = zp + camDist;
+            const finalYp = yp - camHeight;
+
+            if (finalZp <= 0.1) {
+                return null;
+            }
+
+            const f = (HEIGHT * 0.63) / finalZp;
+            const sx = WIDTH / 2 + xz * f;
+            const sy = HEIGHT / 2 - finalYp * f;
+            const depth = finalZp;
+            return {sx, sy, depth};
+        }
+
+        // ================== 主程序 ==================
+        // 获取Canvas和上下文
+        const canvas = document.getElementById('sceneCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置Canvas尺寸
+        canvas.width = WIDTH;
+        canvas.height = HEIGHT;
+        
+        // 生成所有粒子
+        const treePoints = genTreePoints();
+        const groundPoints = genGroundPoints();
+        const starPoints = genStarPoints();
+        const heartPoints = genHeartPoints();
+        const snow2DPoints = initSnow2D();
+        
+        // FPS计数器
+        let fps = 60;
+        let lastTime = 0;
+        let frameCount = 0;
+        const fpsCounter = document.getElementById('fpsCounter');
+        
+        // 绘制函数
+        function draw() {
+            // 清空画布
+            ctx.fillStyle = 'rgb(0, 0, 0)';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            
+            // 更新旋转角度
+            if (isRotating) {
+                rotationAngle += 0.0045;
+            }
+            
+            // 收集所有要绘制的点
+            const drawList = [];
+            
+            // 合并所有粒子
+            const allPoints = treePoints.concat(groundPoints, starPoints, heartPoints);
+            
+            // 投影所有点
+            for (const point of allPoints) {
+                const proj = projectPoint(point.x, point.y, point.z, rotationAngle);
+                if (proj) {
+                    const size = Math.max(1, 3.6 - proj.depth * 0.13);
+                    drawList.push({
+                        depth: proj.depth,
+                        x: proj.sx,
+                        y: proj.sy,
+                        size: size,
+                        color: point.color
+                    });
+                }
+            }
+            
+            // 按深度排序（从远到近）
+            drawList.sort((a, b) => b.depth - a.depth);
+            
+            // 绘制所有点
+            for (const point of drawList) {
+                const [r, g, b] = point.color;
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // 更新并绘制雪花
+            if (isSnowFalling) {
+                updateSnow2D(snow2DPoints, 1/60);
+            }
+            drawSnow2D(ctx, snow2DPoints);
+        }
+        
+        // 动画循环
+        function animate(currentTime) {
+            // 计算FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                fpsCounter.textContent = fps;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            // 绘制场景
+            draw();
+            
+            // 继续动画循环
+            requestAnimationFrame(animate);
+        }
+        
+        // 启动动画
+        requestAnimationFrame(animate);
+        
+        // ================== 交互控制 ==================
+        document.getElementById('toggleRotation').addEventListener('click', function() {
+            isRotating = !isRotating;
+            this.textContent = isRotating ? '暂停旋转' : '继续旋转';
+        });
+        
+        document.getElementById('toggleSnow').addEventListener('click', function() {
+            isSnowFalling = !isSnowFalling;
+            this.textContent = isSnowFalling ? '暂停雪花' : '继续雪花';
+        });
+        
+        document.getElementById('resetView').addEventListener('click', function() {
+            camDist = 13;
+            camHeight = 6.0;
+            rotationAngle = 0.0;
+        });
+        
+        document.getElementById('toggleFullscreen').addEventListener('click', function() {
+            if (!document.fullscreenElement) {
+                canvas.requestFullscreen().catch(err => {
+                    console.log(`全屏请求错误: ${err.message}`);
+                });
+                this.textContent = '退出全屏';
+            } else {
+                document.exitFullscreen();
+                this.textContent = '全屏';
+            }
+        });
+        
+        // 鼠标滚轮缩放
+        canvas.addEventListener('wheel', function(event) {
+            event.preventDefault();
+            const zoomSpeed = 0.5;
+            
+            if (event.deltaY < 0) {
+                // 向上滚动，拉近
+                camDist = Math.max(5, camDist - zoomSpeed);
+            } else {
+                // 向下滚动，拉远
+                camDist = Math.min(25, camDist + zoomSpeed);
+            }
+        });
+        
+        // 适应窗口大小变化
+        window.addEventListener('resize', function() {
+            // 保持Canvas比例，这里简单处理为固定尺寸
+            // 在实际应用中，可以调整画布尺寸并重新计算投影参数
+        });
+        
+        // 退出全屏时更新按钮文本
+        document.addEventListener('fullscreenchange', function() {
+            const fullscreenBtn = document.getElementById('toggleFullscreen');
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '全屏';
+            }
+        });
+    </script>
+</body>
+</html>
